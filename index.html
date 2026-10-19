@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Помощник набора веса</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #111319;
+      --card: #1b1e27;
+      --card2: #242836;
+      --accent: #ff7eb3;
+      --accent-grad: linear-gradient(135deg, #ff7eb3, #a855f7);
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --green: #34d399;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 14px; padding-bottom: 90px; }
+    h2 { font-size: 16px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .card { background: var(--card); border-radius: 18px; padding: 16px; margin-bottom: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+
+    /* Прогресс бар */
+    .bar-bg { width: 100%; height: 10px; background: #2c3040; border-radius: 99px; overflow: hidden; margin: 8px 0; }
+    .bar-fill { height: 100%; background: var(--accent-grad); border-radius: 99px; transition: width 0.4s ease; }
+
+    /* Дашборд калорий */
+    .kcal-hero { text-align: center; padding: 6px 0 12px; }
+    .kcal-big { font-size: 38px; font-weight: 800; letter-spacing: -1px; }
+    .kcal-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .macros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+    .macro-item { background: var(--card2); padding: 10px 8px; border-radius: 12px; text-align: center; font-size: 12px; color: var(--muted); }
+    .macro-item b { display: block; font-size: 15px; color: var(--text); margin-top: 3px; }
+
+    /* Кнопки и инпуты */
+    .btn { width: 100%; background: var(--accent-grad); border: none; color: #fff; font-weight: 600; padding: 13px; border-radius: 14px; font-size: 15px; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px; }
+    .btn:active { opacity: 0.9; transform: scale(0.99); }
+    .btn-outline { background: var(--card2); border: 1px solid #353b4f; }
+    input, textarea { width: 100%; background: var(--card2); border: 1px solid #353b4f; color: #fff; padding: 11px 12px; border-radius: 12px; margin-bottom: 10px; font-size: 14px; outline: none; }
+    input:focus, textarea:focus { border-color: var(--accent); }
+    label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+
+    /* Быстрые перекусы */
+    .snacks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .snack { background: var(--card2); border: 1px solid #313648; border-radius: 12px; padding: 10px; text-align: left; color: var(--text); font-size: 13px; cursor: pointer; }
+    .snack:active { border-color: var(--accent); }
+    .snack span { display: block; color: var(--green); font-weight: 600; font-size: 12px; margin-top: 4px; }
+
+    /* Список еды */
+    .meal-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #282c3a; }
+    .meal-row:last-child { border-bottom: none; }
+    .meal-name { font-size: 14px; font-weight: 500; }
+    .meal-info { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .del { background: none; border: none; color: var(--danger); font-size: 16px; padding: 4px 8px; cursor: pointer; }
+
+    /* AI Сканер */
+    .photo-box { border: 2px dashed #3b4259; border-radius: 16px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 12px; position: relative; }
+    .photo-box img { max-width: 100%; max-height: 200px; border-radius: 12px; margin-top: 8px; display: none; margin-left: auto; margin-right: auto; }
+    .ai-result { background: #23293a; border-left: 4px solid var(--accent); padding: 12px; border-radius: 12px; margin-top: 12px; display: none; }
+
+    /* Навигация */
+    .nav { position: fixed; bottom: 0; left: 0; right: 0; background: #161821; display: flex; justify-content: space-around; padding: 10px 0 18px; border-top: 1px solid #262936; z-index: 10; }
+    .nav-btn { background: none; border: none; color: var(--muted); font-size: 11px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+    .nav-btn.active { color: var(--accent); font-weight: 600; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+  </style>
+</head>
+<body>
+
+  <!-- ВКЛАДКА 1: ДНЕВНИК -->
+  <div id="tab-home" class="tab active">
+    <!-- Прогресс веса -->
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:baseline;">
+        <div>
+          <span style="font-size:12px; color:var(--muted);">Текущий вес</span>
+          <div style="font-size:24px; font-weight:800; color:var(--accent);" id="ui-w-now">47.0 кг</div>
+        </div>
+        <div style="text-align:right;">
+          <span style="font-size:12px; color:var(--muted);">Цель</span>
+          <div style="font-size:18px; font-weight:700;" id="ui-w-goal">50.0 кг</div>
+        </div>
+      </div>
+      <div class="bar-bg"><div class="bar-fill" id="ui-w-bar" style="width:0%"></div></div>
+      <div style="font-size:12px; color:var(--muted); display:flex; justify-content:space-between;">
+        <span id="ui-w-status">Начало пути!</span>
+        <span style="color:var(--accent); cursor:pointer;" onclick="openTab('weight', document.querySelectorAll('.nav-btn')[2])">⚖️ Записать вес →</span>
+      </div>
+    </div>
+
+    <!-- Счетчик калорий за день -->
+    <div class="card">
+      <div class="kcal-hero">
+        <div class="kcal-big" id="ui-kcal">0 / 2100</div>
+        <div class="kcal-sub" id="ui-kcal-left">Осталось набрать: 2100 ккал</div>
+      </div>
+      <div class="bar-bg"><div class="bar-fill" id="ui-kcal-bar" style="width:0%"></div></div>
+      <div class="macros">
+        <div class="macro-item">Белки<b id="ui-p">0 / 90г</b></div>
+        <div class="macro-item">Жиры<b id="ui-f">0 / 70г</b></div>
+        <div class="macro-item">Углеводы<b id="ui-c">0 / 275г</b></div>
+      </div>
+      <button class="btn" style="margin-top:14px;" onclick="openTab('ai', document.querySelectorAll('.nav-btn')[1])">
+        📸 Сфоткать еду / ИИ-помощник
+      </button>
+    </div>
+
+    <!-- Чем добрать калории -->
+    <div class="card">
+      <h2>⚡ Быстрый перекус (+1 клик)</h2>
+      <div class="snacks">
+        <button class="snack" onclick="addMeal('Смузи банан + арахис. паста', 380, 12, 16, 48)">🥤 Банановый смузи<span>+380 ккал</span></button>
+        <button class="snack" onclick="addMeal('Горсть орехов (40г)', 240, 7, 20, 8)">🥜 Горсть орехов<span>+240 ккал</span></button>
+        <button class="snack" onclick="addMeal('Тост с авокадо и яйцом', 310, 11, 18, 26)">🥑 Тост с авокадо<span>+310 ккал</span></button>
+        <button class="snack" onclick="addMeal('Творожный сырок', 210, 5, 13, 18)">🍫 Сырок к чаю<span>+210 ккал</span></button>
+      </div>
+    </div>
+
+    <!-- Список за сегодня -->
+    <div class="card">
+      <h2>🍽 Съедено за сегодня</h2>
+      <div id="meals-list"></div>
+    </div>
+  </div>
+
+  <!-- ВКЛАДКА 2: ИИ-СКАНЕР И ПОМОЩНИК -->
+  <div id="tab-ai" class="tab">
+    <div class="card">
+      <h2>📸 Оценка калорий по фото или тексту</h2>
+      <label class="photo-box" for="food-photo">
+        <div id="photo-placeholder">📷 Нажми, чтобы сделать фото блюда или выбрать из галереи</div>
+        <img id="photo-preview" alt="Превью">
+      </label>
+      <input type="file" id="food-photo" accept="image/*" style="display:none" onchange="handlePhoto(event)">
+      
+      <textarea id="ai-text" rows="2" placeholder="Или опиши текстом (например: тарелка пасты карбонара и латте)..."></textarea>
+      <button class="btn" id="btn-analyze" onclick="analyzeFood()">✨ Посчитать калории через ИИ</button>
+
+      <!-- Результат ИИ -->
+      <div class="ai-result" id="ai-res-box">
+        <div style="font-weight:700; font-size:15px;" id="ai-res-name"></div>
+        <div style="font-size:14px; margin:6px 0; color:var(--green);" id="ai-res-macros"></div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:10px;" id="ai-res-tip"></div>
+        <button class="btn" onclick="confirmAiMeal()">✅ Записать в дневник</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>✍️ Добавить вручную без ИИ</h2>
+      <input type="text" id="m-name" placeholder="Название блюда">
+      <input type="number" id="m-kcal" placeholder="Калории (ккал)">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+        <input type="number" id="m-p" placeholder="Белки (г)">
+        <input type="number" id="m-f" placeholder="Жиры (г)">
+        <input type="number" id="m-c" placeholder="Углев (г)">
+      </div>
+      <button class="btn btn-outline" onclick="addManual()">Добавить</button>
+    </div>
+  </div>
+
+  <!-- ВКЛАДКА 3: ВЕС И ПРОГРЕСС -->
+  <div id="tab-weight" class="tab">
+    <div class="card">
+      <h2>⚖️ Записать новый вес</h2>
+      <input type="number" step="0.1" id="w-input" placeholder="Например: 47.4">
+      <button class="btn" onclick="saveWeight()">Сохранить замер</button>
+    </div>
+
+    <div class="card">
+      <h2>📈 История замеров</h2>
+      <div id="weight-history"></div>
+    </div>
+  </div>
+
+  <!-- ВКЛАДКА 4: ПЛАН И НАСТРОЙКИ -->
+  <div id="tab-plan" class="tab">
+    <div class="card">
+      <h2>🔑 Ключ ИИ для распознавания фото</h2>
+      <label>Бесплатный ключ Gemini API (из Google AI Studio)</label>
+      <input type="password" id="cfg-key" placeholder="AIzaSy...">
+      <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">
+        Ключ хранится только в памяти твоего телефона и не попадает в публичный код на GitHub.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🎯 Настройка плана (47 → 50 кг)</h2>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <div><label>Начальный вес (кг)</label><input type="number" step="0.1" id="cfg-w-start"></div>
+        <div><label>Целевой вес (кг)</label><input type="number" step="0.1" id="cfg-w-goal"></div>
+      </div>
+      <label>Дневная цель по калориям</label>
+      <input type="number" id="cfg-kcal">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+        <div><label>Белки (г)</label><input type="number" id="cfg-p"></div>
+        <div><label>Жиры (г)</label><input type="number" id="cfg-f"></div>
+        <div><label>Углеводы (г)</label><input type="number" id="cfg-c"></div>
+      </div>
+      <button class="btn" onclick="saveSettings()">💾 Сохранить настройки</button>
+    </div>
+  </div>
+
+  <!-- НИЖНЕЕ МЕНЮ -->
+  <div class="nav">
+    <button class="nav-btn active" onclick="openTab('home', this)">📊<span>Дневник</span></button>
+    <button class="nav-btn" onclick="openTab('ai', this)">📸<span>ИИ-Сканер</span></button>
+    <button class="nav-btn" onclick="openTab('weight', this)">⚖️<span>Вес</span></button>
+    <button class="nav-btn" onclick="openTab('plan', this)">⚙️<span>План</span></button>
+  </div>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) tg.expand();
+
+    // Состояние по умолчанию (под 47 кг -> 50 кг, 170 см, 21 год)
+    const defaultState = {
+      apiKey: '',
+      plan: { startW: 47.0, goalW: 50.0, kcal: 2100, p: 90, f: 70, c: 275 },
+      weights: [{ date: getToday(), val: 47.0 }],
+      meals: {}
+    };
+
+    let state = JSON.parse(localStorage.getItem('weightGainApp_v1')) || defaultState;
+    let currentPhotoBase64 = null;
+    let pendingAiMeal = null;
+
+    function getToday() {
+      return new Date().toISOString().split('T')[0];
+    }
+
+    function saveState() {
+      localStorage.setItem('weightGainApp_v1', JSON.stringify(state));
+      render();
+    }
+
+    function openTab(id, btn) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + id).classList.add('active');
+      if (btn) btn.classList.add('active');
+    }
+
+    function render() {
+      const p = state.plan;
+      const curW = state.weights.length ? state.weights[state.weights.length - 1].val : p.startW;
+
+      // Вес
+      document.getElementById('ui-w-now').textContent = curW.toFixed(1) + ' кг';
+      document.getElementById('ui-w-goal').textContent = p.goalW.toFixed(1) + ' кг';
+      const wPct = Math.max(0, Math.min(100, ((curW - p.startW) / (p.goalW - p.startW)) * 100));
+      document.getElementById('ui-w-bar').style.width = wPct + '%';
+      const leftKg = Math.max(0, p.goalW - curW).toFixed(1);
+      document.getElementById('ui-w-status').textContent = `Пройдено ${Math.round(wPct)}% • Осталось +${leftKg} кг`;
+
+      // Еда за сегодня
+      const today = getToday();
+      const todayMeals = state.meals[today] || [];
+      let tk = 0, tp = 0, tf = 0, tc = 0;
+      const listEl = document.getElementById('meals-list');
+      listEl.innerHTML = '';
+
+      if (todayMeals.length === 0) {
+        listEl.innerHTML = '<div style="color:var(--muted); font-size:13px;">Пока пусто. Сфоткай еду через ИИ-сканер или нажми на быстрый перекус!</div>';
+      } else {
+        todayMeals.forEach((m, idx) => {
+          tk += m.kcal; tp += m.p; tf += m.f; tc += m.c;
+          listEl.innerHTML += `
+            <div class="meal-row">
+              <div>
+                <div class="meal-name">${m.name}</div>
+                <div class="meal-info">${m.time} • <b>${m.kcal} ккал</b> (Б:${m.p} Ж:${m.f} У:${m.c})</div>
+              </div>
+              <button class="del" onclick="removeMeal(${idx})">✕</button>
+            </div>`;
+        });
+      }
+
+      document.getElementById('ui-kcal').textContent = `${tk} / ${p.kcal}`;
+      const leftKcal = Math.max(0, p.kcal - tk);
+      document.getElementById('ui-kcal-left').textContent = leftKcal > 0
+        ? `Осталось набрать: ${leftKcal} ккал`
+        : '🎉 Супер! Дневная норма для набора выполнена!';
+      document.getElementById('ui-kcal-bar').style.width = Math.min(100, (tk / p.kcal) * 100) + '%';
+
+      document.getElementById('ui-p').textContent = `${tp} / ${p.p}г`;
+      document.getElementById('ui-f').textContent = `${tf} / ${p.f}г`;
+      document.getElementById('ui-c').textContent = `${tc} / ${p.c}г`;
+
+      // История веса
+      const wHist = document.getElementById('weight-history');
+      wHist.innerHTML = state.weights.slice().reverse().map(w =>
+        `<div class="meal-row"><span>📅 ${w.date}</span><b>${w.val.toFixed(1)} кг</b></div>`
+      ).join('');
+
+      // Настройки
+      document.getElementById('cfg-key').value = state.apiKey || '';
+      document.getElementById('cfg-w-start').value = p.startW;
+      document.getElementById('cfg-w-goal').value = p.goalW;
+      document.getElementById('cfg-kcal').value = p.kcal;
+      document.getElementById('cfg-p').value = p.p;
+      document.getElementById('cfg-f').value = p.f;
+      document.getElementById('cfg-c').value = p.c;
+    }
+
+    function addMeal(name, kcal, p, f, c) {
+      const today = getToday();
+      if (!state.meals[today]) state.meals[today] = [];
+      const time = new Date().toTimeString().slice(0, 5);
+      state.meals[today].push({ name, kcal: Number(kcal), p: Number(p), f: Number(f), c: Number(c), time });
+      saveState();
+      openTab('home', document.querySelectorAll('.nav-btn')[0]);
+    }
+
+    function removeMeal(idx) {
+      const today = getToday();
+      state.meals[today].splice(idx, 1);
+      saveState();
+    }
+
+    function addManual() {
+      const name = document.getElementById('m-name').value || 'Прием пищи';
+      const kcal = document.getElementById('m-kcal').value || 0;
+      const p = document.getElementById('m-p').value || 0;
+      const f = document.getElementById('m-f').value || 0;
+      const c = document.getElementById('m-c').value || 0;
+      addMeal(name, kcal, p, f, c);
+      document.getElementById('m-name').value = '';
+      document.getElementById('m-kcal').value = '';
+    }
+
+    function saveWeight() {
+      const val = parseFloat(document.getElementById('w-input').value);
+      if (!val) return;
+      state.weights.push({ date: getToday(), val });
+      document.getElementById('w-input').value = '';
+      saveState();
+      openTab('home', document.querySelectorAll('.nav-btn')[0]);
+    }
+
+    function saveSettings() {
+      state.apiKey = document.getElementById('cfg-key').value.trim();
+      state.plan = {
+        startW: parseFloat(document.getElementById('cfg-w-start').value) || 47,
+        goalW: parseFloat(document.getElementById('cfg-w-goal').value) || 50,
+        kcal: parseInt(document.getElementById('cfg-kcal').value) || 2100,
+        p: parseInt(document.getElementById('cfg-p').value) || 90,
+        f: parseInt(document.getElementById('cfg-f').value) || 70,
+        c: parseInt(document.getElementById('cfg-c').value) || 275
+      };
+      saveState();
+      alert('Настройки и план сохранены!');
+      openTab('home', document.querySelectorAll('.nav-btn')[0]);
+    }
+
+    // Сжатие фото перед отправкой в ИИ
+    function handlePhoto(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const max = 800;
+          let w = img.width, h = img.height;
+          if (w > h && w > max) { h *= max / w; w = max; }
+          else if (h > max) { w *= max / h; h = max; }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          currentPhotoBase64 = dataUrl.split(',')[1];
+          const preview = document.getElementById('photo-preview');
+          preview.src = dataUrl;
+          preview.style.display = 'block';
+          document.getElementById('photo-placeholder').textContent = '✅ Фото загружено (нажми, чтобы заменить)';
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Анализ через Gemini API напрямую из браузера
+    async function analyzeFood() {
+      if (!state.apiKey) {
+        alert('Сначала вставь бесплатный ключ Gemini API во вкладке «⚙️ План»!');
+        openTab('plan', document.querySelectorAll('.nav-btn')[3]);
+        return;
+      }
+
+      const text = document.getElementById('ai-text').value.trim();
+      if (!currentPhotoBase64 && !text) {
+        alert('Сделай фото еды или напиши, что ты съела!');
+        return;
+      }
+
+      const btn = document.getElementById('btn-analyze');
+      btn.textContent = '🔍 ИИ считает калории...';
+      btn.disabled = true;
+
+      try {
+        const prompt = `Ты заботливый диетолог для девушки (47 кг, цель набрать до 50 кг).
+Определи блюдо по фото и/или описанию: "${text}".
+Оцени примерный вес порции и КБЖУ. Ответь СТРОГО чистым JSON без markdown:
+{"name": "Название блюда и вес (~250г)", "kcal": 420, "p": 16, "f": 20, "c": 44, "tip": "Короткий совет, как легко повысить питательность"}`;
+
+        const parts = [{ text: prompt }];
+        if (currentPhotoBase64) {
+          parts.push({ inline_data: { mime_type: 'image/jpeg', data: currentPhotoBase64 } });
+        }
+
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${state.apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts }] })
+        });
+
+        const data = await res.json();
+        let raw = data.candidates[0].content.parts[0].text;
+        raw = raw.replace(/```json/g, '').replace(/```/g, '').trim();
+        pendingAiMeal = JSON.parse(raw);
+
+        document.getElementById('ai-res-name').textContent = '🍽 ' + pendingAiMeal.name;
+        document.getElementById('ai-res-macros').textContent = `🔥 ${pendingAiMeal.kcal} ккал | Б: ${pendingAiMeal.p}г • Ж: ${pendingAiMeal.f}г • У: ${pendingAiMeal.c}г`;
+        document.getElementById('ai-res-tip').textContent = '💡 ' + (pendingAiMeal.tip || '');
+        document.getElementById('ai-res-box').style.display = 'block';
+      } catch (err) {
+        alert('Ошибка при анализе. Проверь правильность ключа Gemini API во вкладке План.');
+        console.error(err);
+      } finally {
+        btn.textContent = '✨ Посчитать калории через ИИ';
+        btn.disabled = false;
+      }
+    }
+
+    function confirmAiMeal() {
+      if (!pendingAiMeal) return;
+      addMeal(pendingAiMeal.name, pendingAiMeal.kcal, pendingAiMeal.p, pendingAiMeal.f, pendingAiMeal.c);
+      document.getElementById('ai-res-box').style.display = 'none';
+      document.getElementById('ai-text').value = '';
+      document.getElementById('photo-preview').style.display = 'none';
+      currentPhotoBase64 = null;
+    }
+
+    render();
+  </script>
+</body>
+</html>
